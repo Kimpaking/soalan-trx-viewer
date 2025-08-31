@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solana Wallet Transactions</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input, button { padding: 10px; margin: 5px 0; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+    th { background: #f4f4f4; }
+    #loading { margin-top: 10px; font-weight: bold; color: #666; }
+    #loadMore { margin-top: 15px; padding: 10px; display: none; }
+    #searchBox { margin-top: 15px; padding: 10px; width: 50%; }
+  </style>
+</head>
+<body>
+  <h2>Solana Wallet Transactions</h2>
+  <input type="text" id="wallet" placeholder="Enter Solana Address" size="50">
+  <button onclick="getTransactions()">Get Transactions</button>
+
+  <h3 id="count"></h3>
+  <p id="loading"></p>
+
+  <!-- Search box -->
+  <input type="text" id="searchBox" placeholder="Search by signature..." onkeyup="filterTable()" style="display:none;">
+
+  <table id="txTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Signature</th>
+        <th>Slot</th>
+        <th>Explorer Link</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <button id="loadMore" onclick="loadMore()">Load More</button>
+
+  <script>
+    let txs = [];        // all fetched transactions
+    let shownCount = 0;  // how many are currently displayed
+
+    async function getTransactions() {
+      const wallet = document.getElementById("wallet").value.trim();
+      if (!wallet) return alert("Please enter a wallet address.");
+
+      document.getElementById("loading").innerText = "Fetching transactions...";
+      document.getElementById("count").innerText = "";
+      document.getElementById("txTable").style.display = "none";
+      document.getElementById("loadMore").style.display = "none";
+      document.getElementById("searchBox").style.display = "none";
+      const tbody = document.querySelector("#txTable tbody");
+      tbody.innerHTML = "";
+
+      const url = "https://api.mainnet-beta.solana.com";
+      let before = null;
+      let total = 0;
+      txs = [];
+      let keepGoing = true;
+
+      while (keepGoing) {
+        const payload = {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getSignaturesForAddress",
+          params: [wallet, { limit: 1000, before }]
+        };
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        const signatures = data.result;
+
+        if (!signatures || signatures.length === 0) {
+          keepGoing = false;
+        } else {
+          total += signatures.length;
+          txs = txs.concat(signatures);
+          before = signatures[signatures.length - 1].signature;
+        }
+
+        // stop at 5000 for performance
+        if (total >= 5000) {
+          keepGoing = false;
+        }
+      }
+
+      document.getElementById("count").innerText =
+        Total Transactions (up to 5000 checked): ${total};
+      document.getElementById("loading").innerText = "";
+
+      shownCount = 0;
+      renderTable();
+
+      if (txs.length > 50) {
+        document.getElementById("loadMore").style.display = "inline-block";
+      }
+
+      document.getElementById("searchBox").style.display = "block";
+    }
+
+    function renderTable() {
+      const tbody = document.querySelector("#txTable tbody");
+
+      const nextBatch = txs.slice(shownCount, shownCount + 50);
+      nextBatch.forEach((tx, i) => {
+        const row = `<tr>
+          <td>${shownCount + i + 1}</td>
+          <td>${tx.signature}</td>
+          <td>${tx.slot}</td>
+          <td><a href="https://explorer.solana.com/tx/${tx.signature}" target="_blank">View</a></td>
+        </tr>`;
+        tbody.innerHTML += row;
+      });
+
+      shownCount += nextBatch.length;
+      document.getElementById("txTable").style.display = "table";
+
+      if (shownCount >= txs.length) {
+        document.getElementById("loadMore").style.display = "none";
+      }
+    }
+
+    function loadMore() {
+      renderTable();
+    }
+
+    function filterTable() {
+      const input = document.getElementById("searchBox").value.toLowerCase();
+      const rows = document.querySelectorAll("#txTable tbody tr");
+
+      rows.forEach(row => {
+        const signature = row.cells[1].innerText.toLowerCase();
+        if (signature.includes(input)) {
+          row.style.display = "";
+        } else {
+          row.style.display = "none";
+        }
+      });
+    }
+  </script>
+</body>
+</html>
